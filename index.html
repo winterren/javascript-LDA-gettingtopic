@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+	<script type="text/javascript" src="js/jquery.js"></script>
+	<script type="text/javascript" src="js/stopwords.js"></script>
+	<script type="text/javascript" src="js/jquery-ui-1.8.21.custom.min.js"></script>
+	<!-- <script src="js/jquery.tagcanvas.min.js" type="text/javascript"></script> -->
+	<script type="text/javascript" src="js/lda.js"></script>
+	<style>
+		#display ul{
+			list-style: none;
+		}
+		#display li{
+			text-decoration: none;
+			display: inline-block;
+			padding: 2px;
+		}
+		#display li:nth-child(odd){
+			color: grey;
+		}
+	</style>
+</head>
+<body>
+	<p>文本</p>
+	<textarea name="input" id="input" cols="30" rows="10">
+		Tucked away on the southwest coast of Tenerife lies a luxury resort that is one of Europe's best-kept secrets
+
+		Abama Resort is a 400-acre exclusive luxury destination offering world-class dining and 5 star services to those who prefer tranquillity over fanfare. And with the majority of its terrain dedicated to its luxury properties component, this is an ideal place to live or visit. Its undisturbed beach, sumptuous spa and year-round springtime climate provide a welcome retreat just a few travel hours from most major European cities.
+
+		View latest Abama Newsletter, Autumn 2016
+		Abama Resort
+		The Abama Resort
+
+		Tenerife, the Island of Eternal Spring, is home to one of Europe’s most exclusive luxury resorts. With a unique natural setting and state-of-the-art facilities, Abama Resort is the ideal destination for a romantic getaway or Tenerife holidays with the whole family.
+
+		Luxury Properties
+		Luxury Properties
+
+		Overlooking the Atlantic and La Gomera Island on the west coast of Tenerife, these remarkable luxury properties feature amenities of the highest calibre and an unrivalled lifestyle.
+
+		Abama Accommodation
+		Abama Accommodation
+
+		Whether you prefer the comfort and convenience of a 5 star hotel suite or the secluded tranquillity of a serviced luxury apartment, we have the accommodation to suit your dream vacation. Enjoy pools with panoramic views, a sumptuous spa, and the finest of Michelin star dining.
+
+		Sport & Leisure
+		Sport & Leisure
+
+		Golf and tennis enthusiasts will enjoy the breathtaking location of our professional tennis and paddle courts, while water- and sun-lovers will revel in our luxury resort’s undisturbed beach with hotel service.
+	</textarea>
+	<p>主题数</p>
+	<select name="topicnum" id="topics">
+		<option value="1">1</option>
+		<option value="2">2</option>
+		<option value="3" selected="selected">3</option>
+		<option value="4">4</option>
+		<option value="5">5</option>
+		<option value="6">6</option>
+	</select>
+	<button id="btn"  onclick="btnTopiciseClicked();">提取</button>
+	<div id="display"></div>
+	<script>
+		// 3 开始生成主题
+		function topicise() {
+			//console.log("analysing "+sentences.length+" sentences...");
+			var documents = new Array();
+			// 词频表f(对应文章)
+			var f = {};
+			// 词列表（对应文章）
+			var vocab=new Array();
+			var docCount=0;
+			// 遍历每一句
+			for(var i=0;i<sentences.length;i++) {
+				if (sentences[i]=="") continue;
+				// 根据空格回车换行等分成单词
+				var words = sentences[i].split(/[\s,\"]+/);
+				if(!words) continue;
+				// 词序表（对应句子）
+				var wordIndices = new Array();
+				// 遍历每个单词
+				for(var wc=0;wc<words.length;wc++) {
+					// 单词变为小写
+					var w=words[wc].toLowerCase().replace(/[^a-z\'A-Z0-9 ]+/g, '');
+					//TODO: Add stemming
+					// 未完成：还没有添加寻找词根功能
+
+					// 单词为空、长度1、停止词、网址，跳过
+					if (w=="" || w.length==1 || stopwords[w] || w.indexOf("http")==0) continue;
+					// 词频表f记录该单词出现次数
+					if (f[w]) { 
+						f[w]=f[w]+1;			
+					} 
+					// 第一次出现的词w在词频表f创建键值对映射，并把w记录在词列表vocab中
+					else if(w) { 
+						f[w]=1; 
+						vocab.push(w); 
+					};	
+					// 在词序表中记录次列表vocab中第几个是w
+					wordIndices.push(vocab.indexOf(w));
+				}
+				// 每一句的词序表wordIndices作为一个元素，记录进入整篇文章的词序表documents数组
+				if (wordIndices && wordIndices.length>0) {
+					documents[docCount++] = wordIndices;
+				}
+			}
+			
+			//V中记录一共有多少词 
+			var V = vocab.length;
+			// M中记录一共有多少句
+			var M = documents.length;
+			// K记录用户需要多少个主题
+			var K = parseInt($( "#topics" ).val());
+			// 每一个文档的主题概率分布
+			var alpha = 0.1;  // per-document distributions over topics
+			// 每一个主题中词的概率分布
+			var beta = .01;  // per-topic distributions over words
+
+			lda.configure(documents,V,10000, 2000, 100, 10);
+			lda.gibbs(K, alpha, beta);
+
+			var theta = lda.getTheta();
+			var phi = lda.getPhi();
+
+			var text = '';
+
+			//topics
+			var topTerms=20;
+			var topicText = new Array();
+			for (var k = 0; k < phi.length; k++) {
+				text+='<div id="topic'+k+'" class="topicbox color'+k+'"><h2>Topic'+(k+1)+'</h2><ul>';
+				var tuples = new Array();
+				for (var w = 0; w < phi[k].length; w++) {
+					 tuples.push(""+phi[k][w].toPrecision(2)+"_"+vocab[w]);
+				}
+				tuples.sort().reverse();
+				if(topTerms>vocab.length) topTerms=vocab.length;
+				topicText[k]='';
+				for (var t = 0; t < topTerms; t++) {
+					var topicTerm=tuples[t].split("_")[1];
+					var prob=parseInt(tuples[t].split("_")[0]*100);
+					if (prob<0.0001) continue;
+					text+=( '<li>' +topicTerm +'</li>' );			
+					console.log("topic "+k+": "+ topicTerm+" = " + prob  + "%");
+					topicText[k] += ( topicTerm +" ");
+				}
+				text+='</ul></div>';
+			}
+			$('#display').html(text);
+			
+			// text='<div class="spacer"> </div>';
+			// //highlight sentences	
+			// for (var m = 0; m < theta.length; m++) {
+			// 	text+='<div class="lines">';
+			// 	text+='<div style="display:table-cell;width:100px;padding-right:5px">';
+			// 	for (var k = 0; k < theta[m].length; k++) {
+			// 		text+=('<div class="box bgcolor'+k+'" style="width:'+parseInt(""+(theta[m][k]*100))+'px" title="'+topicText[k]+'"></div>');
+			// 	}
+			// 	text+='</div>'+sentences[m]+'</div>';
+			// }
+			// $("#output").html(text);
+			
+			// for (var k = 0; k < phi.length; k++) {
+			// 	if(!$('#topic'+k).tagcanvas({
+			// 	      textColour: $('#topic'+k).css('color'),
+			// 		  maxSpeed: 0.05,
+			// 		 initial: [(Math.random()>0.5 ? 1: -1) *Math.random()/2,(Math.random()>0.5 ? 1: -1) *Math.random()/2],  //[0.1,-0.1],
+			// 		  decel: 0.98,
+			// 		  reverse: true,
+			// 		  weightSize:10,
+			// 		  weightMode:'size',
+			// 		  weightFrom:'data-weight',
+			// 		  weight: true
+			// 		}))	
+			// 	{
+			// 		$('#topic'+k).hide();
+			// 	} else {
+			// 		//TagCanvas.Start('topic'+k);
+			// 	}
+			// }
+		}
+
+		// 1 选定主题数
+		$(document).ready(function(){
+			// 选定主题数
+			var select = $( "#topics" );
+			var slider = $( "<div id='slider'></div>" ).insertAfter( select ).slider({
+				min: 2,
+				max: 10,
+				range: "min",
+				value: select[0].selectedIndex+2,
+				slide: function( event, ui ) {
+					select[0].selectedIndex = ui.value-2;
+				}
+			});
+			$( "#topics" ).change(function() {
+				slider.slider( "value", this.selectedIndex + 2 );
+			});
+		});
+
+		// 2 点击生成主题按钮的事件
+		function btnTopiciseClicked() {
+			console.log('clicked')
+			$('#btn').attr('disabled','disabled');
+			// 读取输入的文本，生成树组，每次换行作为一项元素
+			sentences = $('#input').val().split("\n");
+			// 生成主题
+			topicise();
+			$('#btn').removeAttr('disabled');
+
+			
+		}
+
+		var sentences;
+	</script>
+</body>
+</html>
